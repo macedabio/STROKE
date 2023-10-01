@@ -1,0 +1,623 @@
+---
+title: "Stroke Codigo"
+output: html_document
+date: "2023-03-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+```
+
+Librerías 
+
+```{r}
+library(tidyverse) 
+library(htmltools)
+library(psych)
+library(kableExtra)
+library(knitr)
+library(ggplot2)
+library(plotly)
+library(stats)
+library(glmnet) 
+library(magrittr)
+library(lubridate)
+library(dplyr)
+library(tidyr)
+library(scales)
+library(readr)
+library(readxl)
+library(xts)
+library(reshape)
+library(tidymodels)
+library(echarts4r)
+library(RColorBrewer)
+library(collapsibleTree)
+library(reactable)
+library(reactablefmtr)
+library(WRS2)
+library(car)
+library(nonpar)
+library(vcd)
+library(randomForest)
+library(ROCR)
+library(purrr)
+library(smbinning)
+library(rpart)
+library(rpart.plot)
+library(h2o)
+library(faraway)
+library(caret)
+library(skimr)
+library(gridExtra )
+library(caTools)
+library(ROSE)
+library(caret)
+library(themis)
+
+```
+
+Análisis de datos
+```{r}
+datos_stroke = read.csv("~/MASTER/TFM/Manu/stroke.csv")
+
+From.Basic = c("striped", "bordered", "hover", "condensed", "responsive")
+
+datos_stroke %>% kable() %>% kable_styling(bootstrap_options = From.Basic, full_width = F, position = "center")
+
+dim(datos_stroke)
+str(datos_stroke)
+
+```
+
+* Ajuste de datos
+```{r}
+# Comprobar si la variable target esta bien balanceada
+
+table(datos_stroke$stroke)
+
+```
+- Existen variables que hay que transformarlas de character a factor, la variable bmi presenta valores nulos y la variable stroke esta poco balanceada ya que presenta un 4% de 1. 
+
+```{r}
+# Conversion
+datos_stroke$gender = as.factor(datos_stroke$gender)
+datos_stroke = datos_stroke %>% filter(gender != "Other") %>% droplevels()
+nrow(datos_stroke)
+
+datos_stroke$age = as.numeric(datos_stroke$age)
+
+datos_stroke$hypertension = factor(datos_stroke$hypertension,levels = c(0,1),labels=c("No","Yes"))
+
+datos_stroke$heart_disease = factor(datos_stroke$heart_disease,levels = c(0,1), labels = c("No", "Yes"))
+
+datos_stroke$ever_married = as.factor(datos_stroke$ever_married)
+
+datos_stroke$work_type = as.factor(datos_stroke$work_type)
+
+datos_stroke$Residence_type = as.factor(datos_stroke$Residence_type)
+
+datos_stroke$avg_glucose_level = as.numeric(datos_stroke$avg_glucose_level)
+
+datos_stroke$bmi = as.numeric(datos_stroke$bmi)
+
+datos_stroke$smoking_status = as.factor(datos_stroke$smoking_status)
+
+datos_stroke$stroke = as.factor(as.character(datos_stroke$stroke))
+
+
+# Estadísticos básicos
+lapply(datos_stroke, summary)
+
+
+# Analisis de nulos
+sort(colSums(is.na(datos_stroke)), decreasing=T) # Existen 201 valores nulos de la variable bmi, por tanto como son tan pocos vamos a eliminarlos. Esto no supondrá ningun problema a la hora de analizarlos.
+
+datos_stroke = datos_stroke %>% na.omit()
+
+data.frame(colSums(is.na(datos_stroke))) # Ya no hay ningun valor NA.
+
+datos_stroke %>% group_by(stroke) %>% count() # desbalanceado
+
+
+datos_stroke$stroke = factor(ifelse(datos_stroke$stroke == "1", "Positive", "Negative"))
+
+datos_stroke$stroke = factor(datos_stroke$stroke, levels = c("Positive", "Negative"), labels = c("Positive", "Negative"))
+
+
+# Análisis de ceros para la variable stroke.
+
+contar_ceros = function(variable){
+  temp = -transmute(datos_stroke,if_else(variable==0,1,0))
+  sum(temp)
+}
+num_ceros = sapply(datos_stroke,contar_ceros)#Con sapply se aplica al df completamente
+num_ceros = data.frame(VARIABLE=names(num_ceros),CEROS=as.numeric(num_ceros),stringsAsFactors=F)
+num_ceros
+```
+
+* Gráficos de frecuencia
+```{r}
+attach(datos_stroke)
+p1 = ggplot(datos_stroke,aes(x=gender,fill=gender))+geom_bar(col="black") +geom_text(aes(label=..count..),stat = "Count", vjust= 1.5)+ggtitle("Gender Distribution")
+
+p2 = ggplot(datos_stroke,aes(x="",fill=hypertension))+geom_bar(position = "fill")+coord_polar("y", start=0)+ggtitle("Distribution of Hypertension")
+
+p3 = ggplot(datos_stroke,aes(x="",fill=heart_disease))+geom_bar(position = "fill")+coord_polar("y")+ggtitle("Distribution of Heart Disease")
+
+p4 = ggplot(datos_stroke,aes(x=ever_married,fill=ever_married))+geom_bar(col="black")+geom_text(aes(label=..count..),stat = "Count", vjust= 1.5)+ggtitle("Marriage Status")
+
+p5 = ggplot(datos_stroke,aes(x="",fill=Residence_type))+geom_bar(position = "fill")+coord_polar("y", start = 0)+ggtitle("Distribution of Residence Type")
+
+p6 = ggplot(datos_stroke,aes(x="",fill=stroke))+geom_bar(position = "fill")+coord_polar("y", start = 0)+ggtitle("Distribution of Stroke occurence")
+
+P7 = ggplot(datos_stroke,aes(x= age,fill=age))+geom_bar(col="black")+geom_text(aes(label=..count..),stat = "Count", vjust= 1.5)+ggtitle("Age")
+
+p8 = ggplot(datos_stroke,aes(x=smoking_status,fill=smoking_status))+geom_bar(col="black")+geom_text(aes(label=..count..),stat = "Count", vjust= 1.5)+ggtitle("Smoking status")
+
+p9 = ggplot(datos_stroke,aes(x=work_type,fill=work_type))+geom_bar(col="black")+geom_text(aes(label=..count..),stat = "Count", vjust= 1.5)+ggtitle("Work type")
+
+p10 = ggplot(datos_stroke,aes(x=bmi, y = ..density..))+geom_histogram(col = "#00868B", fill = "#00F5FF")+ggtitle("BMI")
+
+p11 = ggplot(datos_stroke,aes(x=avg_glucose_level, y = ..density..))+ geom_histogram(col = "#00868B", fill = "#00F5FF")+ggtitle("Glucosa level")
+
+
+grid.arrange(p1,p2,p3,p4, p5, p6, ncol = 2)
+
+grid.arrange(p8,p9, ncol = 1)
+
+p10
+p11
+
+```
+
+* Gráficos de frecuencias respecto al stroke
+```{r}
+p01 = ggplot(datos_stroke,aes(x=gender,fill = stroke))+geom_bar(position ="fill")+ggtitle("Gender vs Stroke")
+
+p02 = ggplot(datos_stroke,aes(x=hypertension,fill=stroke))+geom_bar(position ="fill")+ggtitle("Hypertension vs Stroke")
+
+p03 =  ggplot(datos_stroke,aes(x=heart_disease,fill=stroke))+geom_bar(position ="fill")+ggtitle("Heart Disease vs Stroke")
+
+p04 = ggplot(datos_stroke,aes(x=ever_married,fill=stroke))+geom_bar(position ="fill")+ggtitle("Married Status vs Stroke")
+
+p05 = ggplot(datos_stroke,aes(x=work_type,fill=stroke))+geom_bar(position ="fill")+ggtitle("Work Type vs Stroke")
+
+p06 = ggplot(datos_stroke,aes(x=Residence_type,fill=stroke))+geom_bar(position ="fill")+ggtitle("Residence Type vs Stroke")
+
+p07 = ggplot(datos_stroke,aes(x=smoking_status,fill=stroke))+geom_bar(position ="fill")+ggtitle("Smoking Status vs Stroke")
+
+
+
+grid.arrange(p01,p02,p03,p04,p06, ncol=3)
+
+grid.arrange(p05,p07, ncol=1)
+```
+
+* Gráficos boxplots
+```{r}
+ggplot(datos_stroke, aes(x = age, y = hypertension, fill = gender)) + geom_boxplot()
+
+ggplot(datos_stroke, aes(x = age, y = heart_disease, fill = gender)) + geom_boxplot()
+
+ggplot(datos_stroke, aes(x = age, y = ever_married, fill = gender)) + geom_boxplot()
+
+ggplot(datos_stroke, aes(x = age, y = work_type, fill = gender)) + geom_boxplot()
+
+ggplot(datos_stroke, aes(x = age, y = Residence_type, fill = gender)) + geom_boxplot()
+
+ggplot(datos_stroke, aes(x = age, y = avg_glucose_level, fill = gender)) + geom_boxplot()
+
+ggplot(datos_stroke, aes(x = age, y = bmi, fill = gender)) + geom_boxplot()
+
+ggplot(datos_stroke, aes(x = age, y = smoking_status, fill = gender)) + geom_boxplot()
+
+ggplot(datos_stroke, aes(x = age, y = stroke, fill = gender)) + geom_boxplot()
+
+```
+
+* Test Chi-cuadrado
+```{r}
+chisq.test(datos_stroke$gender, datos_stroke$stroke)
+
+chisq.test(datos_stroke$age, datos_stroke$stroke)
+
+chisq.test(datos_stroke$hypertension, datos_stroke$stroke)
+
+chisq.test(datos_stroke$heart_disease, datos_stroke$stroke)
+
+chisq.test(datos_stroke$ever_married, datos_stroke$stroke)
+
+chisq.test(datos_stroke$work_type, datos_stroke$stroke)
+
+chisq.test(datos_stroke$Residence_type, datos_stroke$stroke)
+
+chisq.test(datos_stroke$avg_glucose_level, datos_stroke$stroke)
+
+chisq.test(datos_stroke$bmi, datos_stroke$stroke)
+  
+chisq.test(datos_stroke$smoking_status, datos_stroke$stroke)
+
+```
+
+* Matrices
+```{r}
+## Age
+table_age = table(datos_stroke$age)
+p_table_age = prop.table(table_age)
+p_table_age
+
+## Gender
+table_gender = table(datos_stroke$gender)
+p_table_gender = prop.table(table_gender)
+p_table_gender
+
+## Hypertension
+table_hiper = table(datos_stroke$hypertension)
+p_table_hiper = prop.table(table_hiper)
+p_table_hiper
+
+## Heart-disease
+table_heart = table(datos_stroke$heart_disease)
+p_table_heart = prop.table(table_heart)
+p_table_heart
+
+## Ever-married
+table_married = table(datos_stroke$ever_married)
+p_table_married = prop.table(table_married)
+p_table_married
+
+## Work-type
+table_work = table(datos_stroke$work_type)
+p_table_work = prop.table(table_work)
+p_table_work
+
+## Residen type
+table_residen = table(datos_stroke$Residence_type)
+p_table_residen = prop.table(table_residen)
+p_table_residen
+
+## Smoking-status
+table_smoking = table(datos_stroke$smoking_status)
+p_table_smoking = prop.table(table_smoking)
+p_table_smoking
+
+## stroke
+table_stroke = table(datos_stroke$stroke)
+p_table_stroke = prop.table(table_stroke)
+p_table_stroke
+
+### glucosa
+table_glucosa = table(datos_stroke$avg_glucose_level)
+p_table_glucosa = prop.table(table_glucosa)
+p_table_glucosa
+
+### bmi
+table_bmi = table(datos_stroke$bmi)
+p_table_bmi= prop.table(table_bmi)
+p_table_bmi
+
+matrix_gender = matrix(c(p_table_gender, p_table_stroke), nrow = 2)
+matrix_edad = matrix(c(p_table_age, p_table_stroke), nrow = 2)
+matrix_heart = matrix(c(p_table_heart, p_table_stroke), nrow = 2)
+matrix_hiper = matrix(c(p_table_hiper, p_table_stroke), nrow = 2)
+matrix_married = matrix(c(p_table_married, p_table_stroke), nrow = 2)
+matrix_residen = matrix(c(p_table_residen, p_table_stroke), nrow = 2)
+matrix_smoking = matrix(c(p_table_smoking, p_table_stroke), nrow = 2)
+matrix_work = matrix(c(p_table_work, p_table_stroke), nrow = 2)
+glucosa_chi = matrix(c(median(datos_stroke$avg_glucose_level), p_table_stroke), nrow = 2)
+bmi_chi = matrix(c(median(datos_stroke$bmi), p_table_stroke), nrow = 2)
+
+```
+
+
+
+* V de Cramer
+```{r}
+v_edad = assocstats(matrix_edad)
+v_edad
+
+```
+
+El resultado es moderado, por tanto los campos están asociados moderadamente. El coeficiente de contingencia muestra un valor proximo a 1, eso quiere decir que los valores son dependientes. 
+
+```{r}
+v_gender = assocstats(matrix_gender)
+v_gender
+
+```
+El resultado es moderado, por tanto los campos están asociados moderadamente. El coeficiente de contingencia muestra un valor proximo a 1, eso quiere decir que los valores son dependientes.
+
+```{r}
+v_heart = assocstats(matrix_heart)
+v_heart
+
+```
+El resultado es alto. Es estadisticamente significativo, los campos están altamente asociados. Hay que destacar que el coeficiente de phi es un valor muy proximo a 1, por lo que indica que hay independencia entre los valores. El coeficiente de contingencia muestra un valor muy proximo a 1, eso quiere decir que los valores son dependientes.
+
+```{r}
+v_hiper = assocstats(matrix_hiper)
+v_hiper
+
+```
+El resultado es alto. Es estadisticamente significativo, los campos están altamente asociados. Hay que destacar que el coeficiente de phi es un valor muy proximo a 1, por lo que indica que hay independencia entre los valores. El coeficiente de contingencia muestra un valor muy proximo a 1, eso quiere decir que los valores son dependientes.
+```{r}
+v_married = assocstats(matrix_married)
+v_married
+
+```
+El resultado es debil, por tanto los campos están asociados debilmente. El coeficiente de phi es un valor muy bajo , con lo cual implica que no hay relación fuerte entre los factores. El coeficiente de contingencia muestra un valor bajo, eso quiere decir que los valores son independientes.
+
+```{r}
+v_residen = assocstats(matrix_residen)
+v_residen
+
+```
+El resultado es moderado, por tanto los campos están asociados moderadamente. El coeficiente de phi es un valor proximo a 1, con lo cual implica que hay relación entre los factores. El coeficiente de contingencia muestra un valor proximo a 1, eso quiere decir que los valores son dependientes. 
+
+```{r}
+v_smoking = assocstats(matrix_smoking)
+v_smoking
+
+```
+El resultado es debil, por tanto los campos están asociados debilmente. El coeficiente de phi es un valor muy bajo , con lo cual implica que no hay relación fuerte entre los factores. El coeficiente de contingencia muestra un valor bajo, eso quiere decir que los valores son independientes.
+
+```{r}
+v_work = assocstats(matrix_work)
+v_work
+
+```
+El resultado es alto. Es estadisticamente significativo, los campos están altamente asociados. El coeficiente de contingencia muestra un valor muy proximo a 1, eso quiere decir que los valores son dependientes.
+
+* Análisis de varianza robusta, ANOVA 
+```{r}
+# Anova 
+## Estamos suponiendo que la distribucion de las variables son normales
+
+norm1 = rnorm(datos_stroke$stroke)
+norm2 = rnorm(datos_stroke$gender)
+norm3 = rnorm(datos_stroke$age)
+norm4 = rnorm(datos_stroke$hypertension)
+norm5 = rnorm(datos_stroke$heart_disease)
+norm6 = rnorm(datos_stroke$ever_married)
+norm7 = rnorm(datos_stroke$work_type)
+norm8 = rnorm(datos_stroke$Residence_type)
+norm9 = rnorm(datos_stroke$avg_glucose_level)
+norm10 = rnorm(datos_stroke$bmi)
+norm11 = rnorm(datos_stroke$smoking_status)
+
+modelo = aov(norm1 ~ norm2 + norm3 + norm4 + norm5 + norm6 + norm7 + norm8 + norm9 + norm10, data = datos_stroke)
+summary(modelo)
+
+
+
+# Graficos
+plot(modelo, ncol = 2)
+
+
+```
+
+* Modelización
+```{r}
+df_results = NULL
+
+for (i in (1:20)){
+  set.seed(i)
+  train_row_numbers = createDataPartition(datos_stroke$stroke, p = 0.8, list = FALSE)
+  data_train = datos_stroke[train_row_numbers, ]
+  data_test = datos_stroke[-train_row_numbers, ]
+  
+  transformer = recipe(formula = stroke ~ .,
+                     data = data_train) %>%
+  #step_impute_median(all_numeric_predictors()) %>% # I use median
+  step_dummy(all_nominal_predictors()) %>%
+  step_center(all_numeric(), -all_outcomes()) %>%
+  step_scale(all_numeric(), -all_outcomes()) %>% 
+  step_smote(stroke, over_ratio = 1, seed = i)
+  
+  transformer_fit = prep(transformer, data_train)
+  data_train = bake(transformer_fit, new_data = data_train)
+  data_test = bake(transformer_fit, new_data = data_test)
+  
+  ctrl = trainControl(method = "cv",
+                      number = 5,
+                      returnResamp = "final",
+                      verboseIter = FALSE,
+                      summaryFunction = twoClassSummary,
+                      classProbs = TRUE,
+                      savePredictions = T)
+  
+  tuneGrid = expand.grid(mtry = 1:length(data)-1)
+  
+  set.seed(i)
+  RF_fit = train(stroke ~ .,
+                    data = data_train,
+                    method = "rf",
+                    metric = "ROC",
+                    trControl = ctrl,
+                    tuneGrid = tuneGrid,
+                    importance = TRUE)
+  
+  probs = seq(0.1, 0.9, by = 0.1) # TÚ HAS COGIDO 0.5
+  
+  set.seed(i)
+  ths_RF_fit = thresholder(RF_fit,
+                           threshold = probs,
+                           final = TRUE,
+                           statistics = "all") # savePredictions = T
+  
+  ths_RF_fit %>%
+  mutate(prob = probs) %>%
+  filter(J == max(J)) %>%
+  pull(prob) -> thresh_prob_RF_fit
+  
+  ths_RF_fit %>%
+  mutate(prob = probs) %>%
+  filter(J == max(J)) %>%
+  pull(J) -> max_J_train
+  
+  preds = as.factor(ifelse(predict(RF_fit, data_test, type = "prob")[,"Positive"] >= thresh_prob_RF_fit,"Positive","Negative"))
+  real = factor(data_test$stroke)
+  
+  cm = ConfusionTableR::binary_class_cm(preds,
+                                        real,
+                                        mode = 'everything',
+                                        positive = 'Positive')
+  sensitivity = cm$confusion_matrix$byClass[1]
+  specificity = cm$confusion_matrix$byClass[2]
+  df = data.frame(preds = preds, real = real)
+  df$preds = as.numeric(ifelse(df$preds == "Positive", 1, 0))
+  df$real = as.numeric(ifelse(df$real == "Positive", 1, 0))
+  prediction = prediction(df$preds, df$real)
+  AUC = as.numeric(performance(prediction,"auc")@y.values)
+  
+  row = data.frame(model = "RF_threshold",
+                   seed = i,
+                   probab = thresh_prob_RF_fit,
+                   max_J_train = max_J_train,
+                   sensitivity = sensitivity,
+                   specificity = specificity,
+                   AUC = AUC)
+  df_results = rbind(df_results, row)
+  
+}
+
+
+df_results %>% kable() %>% kable_styling()
+
+
+
+```
+
+
+Otros modelos
+```{r}
+
+set.seed(123)
+
+data_split = initial_split(datos_stroke, prop = 3/4, strata = stroke)
+
+df_train = training(data_split)
+df_test = testing(data_split)
+```
+
+- prep & bake
+```{r}
+train_data = transformer %>% 
+  prep(training = df_train) %>% 
+  bake(new_data = NULL) # df_train will be processed
+```
+
+- bake test
+```{r}
+test_data = transformer %>% 
+  prep( training = df_test) %>% 
+  bake(new_data = df_test)
+
+```
+
+- check oversampling results
+```{r}
+train_data %>% count(stroke) # SMOTE was applied
+test_data %>% count(stroke) # not applied
+
+```
+
+* Tabla 
+```{r}
+formato = c("striped", "bordered", "hover", "responsive")
+
+head(train_data) %>% kable() %>%
+  kable_styling(bootstrap_options = formato,
+                                    full_width = FALSE,
+                                    position = "center",
+                                    font_size = 16) %>%
+  row_spec(0, bold = T, color = "blue")
+
+```
+
+```{r}
+# recipe for LR
+lr_recipe = recipe(stroke ~ ., data = df_train) %>%
+  step_impute_median(all_numeric_predictors()) %>% # I use median
+  step_dummy(all_nominal_predictors()) %>% # dummy goes before normalization
+  step_normalize(all_predictors()) %>% 
+  step_corr(threshold = 0.75) %>%
+  step_smote(stroke, over_ratio = 1, seed = i) # original target distribution 399 v 62
+
+# set model type/engine
+lr_mod = logistic_reg(penalty = tune(), mixture = 1) %>% 
+  set_engine("glmnet")
+
+# define the workflow
+lr_workflow = 
+  workflow() %>% 
+  add_model(lr_mod) %>% 
+  add_recipe(lr_recipe)
+
+# create a tune grid
+lr_reg_grid = tibble(penalty = 10**seq(-4, 0, length.out = 30))
+
+# Stratified, repeated 10-fold cross-validation
+cv_folds = vfold_cv(df_train, strata = "stroke", v = 10, repeats = 5)
+
+
+cls_metrics = metric_set(roc_auc)
+
+# train and tune the model
+lr_res = tune_grid(lr_workflow,
+              grid = lr_reg_grid,
+              resamples = cv_folds,
+              control = control_grid(save_pred = TRUE),
+              metrics = cls_metrics)
+
+```
+
+
+* Resultados
+```{r}
+autoplot(lr_res)
+
+```
+
+Cuanto menor sea la penalización, menor será el número de predictores utilizados por el modelo. Tales modelos deben ser preferidos.
+
+* Elección del mejor modelo
+
+Aquí puede ver los 5 mejores modelos basados en el AUC medio y clasificados por puntaje de penalización:
+
+```{r}
+top_models =
+  lr_res %>% 
+  show_best("roc_auc", n = 5) %>% 
+  arrange(penalty) 
+
+top_models %>% arrange(penalty)
+```
+
+
+Elegiré un modelo con el AUC medio más alto
+
+```{r}
+
+lr_best = lr_res %>% 
+  select_best(metric = "roc_auc")
+
+lr_best
+```
+
+
+* ROC-AUC del mejor modelo
+
+```{r, warning=FALSE, message=FALSE}
+lr_auc = 
+  lr_res %>% 
+  collect_predictions(parameters = lr_best) %>% 
+  roc_curve(stroke, .pred_Positive) %>% 
+  mutate(model = "Logistic Regression")
+
+autoplot(lr_auc)
+
+```
+
